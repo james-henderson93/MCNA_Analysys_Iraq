@@ -52,10 +52,15 @@ devtools::install_github(
 
 
 devtools::install_github(
-  "mabafaba/hypegrammaR",
-  build_opts = c()
+  "mabafaba/hypegrammaR", 
+  ref = "master", 
+  build_vignettes = TRUE
 )
 
+devtools::install_github(
+  "mabafaba/hypegrammaR", 
+  ref = "use_srvyr", 
+  build_vignettes = TRUE)
 
 
 

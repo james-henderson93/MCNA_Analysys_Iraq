@@ -19,14 +19,15 @@ kobo.xlsx.to.csv <- function(dir, sheetName, anonymise=F, anonymise_cols = NULL)
   write.csv(child,paste0(dir,"/child.csv"), row.names = F)
 }
 
-anonymise.cleaned.data <- function(dir, anonymise_cols = NULL) {
-  parent <- read.csv(sprintf("%s/parent_cleaned.csv", dir), stringsAsFactors = F, encoding = "UTF-8")
+anonymise.cleaned.data <- function(dir, name = NULL, anonymise_cols = NULL) {
+  name <- ifelse(is.null(name), "parent", name)
+  parent <- read.csv(sprintf("%s/%s_cleaned.csv", dir, name), stringsAsFactors = F, encoding = "UTF-8")
   if (is.null(anonymise_cols)) {
     anonymise_cols <- c(grep("*contact*",names(parent)), 
                         grep("*gpslocation*",names(parent)))
   }
   parent_ano <- parent[,-anonymise_cols]
-  write.csv(parent_ano,paste0(dir,"/parent_cleaned_anonymised.csv"), row.names = F, fileEncoding = "UTF-8")
+  write.csv(parent_ano,sprintf("%s/%s_cleaned_anonymised.csv", dir, name), row.names = F, fileEncoding = "UTF-8")
 } 
 
 log.cleaning.change <- function(uuid, action, old.value=NULL, question.name=NULL, new.value=NULL, issue=NULL,
@@ -65,6 +66,61 @@ log.cleaning.change <- function(uuid, action, old.value=NULL, question.name=NULL
     }
   }
   write.csv(log, log_file, row.names = F)
+  return(log)
+}
+log.cleaning.change.loop <- function(data, loop, partners, psu, index, action,  
+                                         question.name=NULL, new.value=NULL, issue=NULL,
+                                         dir) {
+  action <- ifelse(action == "c", "change", ifelse(action == "d", "deletion", ifelse(action == "f", "flag", action)))
+  if (!action %in% c("change", "deletion", "flag")) {
+    stop("action given is not a valid action")
+  }
+  if (action == "change" & (is.null(question.name) | is.null(new.value))) {
+    stop("For a change all the parameters of old.value, question.name and new.value should be given.")
+  }
+  if (action == "flag" & is.null(question.name)) {
+    stop("For a flag the parameter question.name should be given.")
+  }
+  log_file <- sprintf("%s/cleaning_logbook.csv",dir)
+  if (file.exists(sprintf("%s/cleaning_logbook.csv",dir))){
+    log <- read.csv(log_file, stringsAsFactors = F, encoding = "UTF-8")
+  } else {
+    log <- data.frame(survey = character(), uuid = character(), governorate = character(), log_date = character(), 
+                      location_id = character(), location_name = character(), district = character(),
+                      ngo = character(), ngo_name = character(), enumerator = character(), 
+                      question.name = character(), 
+                      issue = character(), feedback = character(), 
+                      action = character(), changed = logical(), old.value = character(), 
+                      new.value = character(), 
+                      stringsAsFactors = F)
+  }
+  for (i in 1:length(index)){
+    uuid <- loop$X_submission__uuid[which(loop$X_index == index[i])]
+    loop_subset <- loop[which(loop$X_submission__uuid == uuid),]
+    n <- which(loop_subset$X_index == index[i])
+    
+    log[nrow(log)+1,"uuid"] <- paste(uuid, n, sep="|")
+    row_nr <- which(data$X_uuid == uuid)
+    log$survey[nrow(log)] <- "loop"
+    log$governorate[nrow(log)] <- data$governorate_mcna[row_nr]
+    log$log_date[nrow(log)] <- format(Sys.Date(), "%d-%m-%Y")
+    log$location_id[nrow(log)] <- data$cluster_location_id[row_nr]
+    log$location_name[nrow(log)] <- psu[match(data$cluster_location_id[row_nr], psu[,3]),7]
+    log$district[nrow(log)] <- psu[match(data$cluster_location_id[row_nr], psu[,3]),5]
+    log$ngo[nrow(log)] <- data$ngo[row_nr]
+    log$ngo_name[nrow(log)] <- partners[match(data$ngo[row_nr], partners[,1]),2]
+    log$enumerator[nrow(log)] <- data$enumerator_num[row_nr]
+    log$action[nrow(log)] <- action
+    log$issue[nrow(log)] <- issue
+    if (action != "deletion") {
+      log$question.name[nrow(log)] <- question.name
+      log$old.value[nrow(log)] <- loop[which(loop$X_index == index[i]), question.name]
+    }
+    if (action == "change") {
+      log$new.value[nrow(log)] <- new.value
+    }
+  }
+  write.csv(log, log_file, row.names = F, fileEncoding = "UTF-8")
   return(log)
 }
 log.cleaning.change.extended <- function(data, partners, psu, uuid, action,  
@@ -118,33 +174,58 @@ log.cleaning.change.extended <- function(data, partners, psu, uuid, action,
   write.csv(log, log_file, row.names = F, fileEncoding = "UTF-8")
   return(log)
 }
-execute.cleaning.changes <- function(dir, uuid_column=NULL) {
+execute.cleaning.changes <- function(dir, filenameparent = "parent", filenamechild = "child", uuid_column=NULL) {
   if (!file.exists(sprintf("%s/cleaning_logbook.csv",dir))){
     stop("no cleaning file found")
   }
   log <- read.csv(sprintf("%s/cleaning_logbook.csv",dir), stringsAsFactors = F, encoding = "UTF-8")
-  data <- read.csv(sprintf("%s/parent.csv",dir), stringsAsFactors = F, encoding = "UTF-8")
-  match <- grep(pattern = "uuid", x = names(data))
+  data <- read.csv(sprintf("%s/%s.csv", dir, filenameparent), stringsAsFactors = F, encoding = "UTF-8")
+  child <- read.csv(sprintf("%s/%s.csv", dir, filenamechild), stringsAsFactors = F, encoding = "UTF-8")
+  match_parent <- grep(pattern = "uuid", x = names(data))
+  match_child <- grep(pattern = "uuid", x = names(child))
   if (is.null(uuid_column)){
-    if (length(match) < 1) {
+    if (length(match_parent) < 1 | length(match_child) < 1) {
       stop("cannot find uuid column")
-    } else if (length(match) > 1) {
+    } else if (length(match_parent) > 1 | length(match_child) > 1) {
       stop("multiple uuid columns found")
     } else {
-      uuid_column <- names(data)[match]
+      uuid_column_parent <- names(data)[match_parent]
+      uuid_column_child <- names(child)[match_child]
     }
   }
-  
-  for(i in 1:nrow(log)){
-    if (log$action[i] == "change") {
-      data[which(data[,uuid_column] == log$uuid[i]), log$question.name[i]] <- log$new.value[i]
+  parents <- which(log$survey == "parent")
+  children <- which(log$survey == "loop")
+  for(i in parents){
+    if (log$action[i] == "change" & log$uuid[i] %in% data$X_uuid) {
+      if (log$question.name[i] %in% names(data)){
+      data[which(data[,uuid_column_parent] == log$uuid[i]), trimws(log$question.name[i], which = "right")] <- log$new.value[i]
       log$changed[i] <- TRUE
-    } else if (log$action[i] == "deletion") {
-      data <- data[-which(data[,uuid_column] == log$uuid[i]), ]
+      } else {
+        log$changed[i] <- "ERROR: cannot find question"
+      }
+    } else if (log$action[i] == "deletion" & log$uuid[i] %in% data$X_uuid) {
+      data <- data[-which(data[,uuid_column_parent] == log$uuid[i]), ]
     }
   }
+  tobedeleted <- c()
+  for(i in children){
+    uuid_split <- strsplit(log$uuid[i], split="|", fixed=T)[[1]]
+    if (log$action[i] == "change" & uuid_split[1] %in% data$X_uuid) {
+      if (log$question.name[i] %in% names(child)){
+      child[which(child[,uuid_column_child] == uuid_split[1])[as.numeric(uuid_split[2])], trimws(log$question.name[i], which = "right")] <- log$new.value[i]
+      log$changed[i] <- TRUE
+      } else {
+        log$changed[i] <- "ERROR: cannot find question"
+      }
+    } else if (log$action[i] == "deletion" & uuid_split[1] %in% data$X_uuid) {
+      tobedeleted <- c(tobedeleted, which(child[,uuid_column_child] == uuid_split[1])[as.numeric(uuid_split[2])])
+    }
+  }
+  if (length(tobedeleted > 0)){
+  child <- child[-tobedeleted, ]}
   write.csv(log, sprintf("%s/cleaning_logbook.csv", dir), row.names = F, fileEncoding = "UTF-8")
-  write.csv(data, sprintf("%s/parent_cleaned.csv", dir), row.names = F, fileEncoding = "UTF-8")
+  write.csv(data, sprintf("%s/%s_cleaned.csv", dir, filenameparent), row.names = F, fileEncoding = "UTF-8")
+  write.csv(child, sprintf("%s/%s_cleaned.csv", dir, filenamechild), row.names = F, fileEncoding = "UTF-8")
 }
 
 points.inside.cluster <- function(data, samplepoints, sample_areas, dir, write_to_file = FALSE, buffer = 1000) {
@@ -166,8 +247,9 @@ points.inside.cluster <- function(data, samplepoints, sample_areas, dir, write_t
       result[nrow(result), 3] <- pop_groups[i]
       
       data_on_cluster <- data_pop %>% filter(cluster_location_id == clusters[j])
-      interview_locations <- data_on_cluster %>% dplyr::select(c(X_gpslocation_longitude,X_gpslocation_latitude))
-      interview_locations_geo <- SpatialPointsDataFrame(interview_locations,interview_locations, proj4string = WGS84)
+      interview_locations <- data_on_cluster %>% dplyr::select(c(X_gpslocation_longitude,X_gpslocation_latitude, X_uuid))
+      interview_locations_geo <- SpatialPointsDataFrame(interview_locations[,c(1,2)],interview_locations, 
+                                                        proj4string = WGS84)
       result[nrow(result), 2] <- nrow(data_on_cluster)
       
       cluster <- strsplit(clusters[j],"_")[[1]][4]
@@ -456,9 +538,9 @@ map.finished.districts <- function(data, log, loc_overview, strata, govs, dir) {
     loc_overview$complete[i] <- min(loc_overview$surveys_done[i] / loc_overview$Survey[i], 1)
   }
   write.csv(loc_overview, sprintf("%s/locations_overview.csv",dir), row.names = F)
-  summarized <- loc_overview %>% group_by(strata) %>% summarise(mean(complete))
+  summarized <- loc_overview %>% dplyr::group_by(strata) %>% dplyr::summarise(mean(complete))
   strata$complete <- summarized$`mean(complete)`[match(strata$ADM2_EN, summarized$strata)]
-  pal <- colorNumeric("RdYlBu", replace(strata$complete,is.infinite(strata$complete),0),reverse=F)
+  pal <- colorNumeric("RdYlBu", strata$complete,reverse=F)
   centers <- data.frame(gCentroid(strata, byid = TRUE))
   centers$lbl <- strata$ADM2_EN
   m <- leaflet(strata) %>% 
