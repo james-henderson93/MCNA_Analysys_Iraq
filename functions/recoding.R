@@ -1,3 +1,12 @@
+round2 = function(x, n=0) {
+  posneg = sign(x)
+  z = abs(x)*10^n
+  z = z + 0.5
+  z = trunc(z)
+  z = z/10^n
+  z*posneg
+}
+
 recoding_preliminary <- function(r, loop) {
   loop_hoh <- loop[which(loop$relationship == "head"),]
   loop_children <- loop[which(loop$age < 18),]
@@ -556,12 +565,12 @@ recoding_severity <- function(r, loop){
   r$s3_5 <- ifelse(r$basic_nfi == 4, 1, 0)
   
   r$s4_1 <- ifelse(r$shelter_better.none == 1, 1, 0)
-  r$s4_4 <- ifelse(r$s4_1 != 1 & (r$shelter_better.protec_hazards == 1 | 
-                                    r$shelter_better.improve_safety == 1 | r$shelter_better.improve_structure == 1), 1, 0)
+  r$s4_4 <- ifelse(r$s4_1 != 1 & (r$shelter_better.improve_safety == 1 | r$shelter_better.improve_structure == 1), 1, 0)
   r$s4_3 <- ifelse((r$s4_1 != 1 & r$s4_4 != 1) & 
                      (r$shelter_better.improve_privacy == 1 | r$shelter_better.protect_climate == 1), 1, 0)
   r$s4_2 <- ifelse((r$s4_1 != 1 & r$s4_4 != 1 & r$s4_3 != 1) & 
-                     (r$shelter_better.improve_tenure == 1 | r$shelter_better.improve_infrastructure == 1), 1, 0)
+                     (r$shelter_better.protec_hazards == 1 | 
+                        r$shelter_better.improve_tenure == 1 | r$shelter_better.improve_infrastructure == 1), 1, 0)
   r$s4_5 <- NA
   r[which(rowSums(r[,which(startsWith(names(r), "shelter_better."))]) == 0 | r$shelter_better.other == 1), 
     which(startsWith(names(r), "s4"))] <- NA
@@ -599,7 +608,7 @@ recoding_severity <- function(r, loop){
                difficulty_walking == "a_lot_of_difficulty" |
                difficulty_remembering == "a_lot_of_difficulty" |
                difficulty_washing == "a_lot_of_difficulty" |
-               difficulty_communicating == "a_lot_of_difficulty") %>% select(disab_explos)
+               difficulty_communicating == "a_lot_of_difficulty") %>% dplyr::select(disab_explos)
     ifelse(nrow(select) > 0 && any(select == "yes"), 1, 0)
   })
   r$s7_5 <- apply(r, 1, FUN=function(x){
@@ -609,7 +618,7 @@ recoding_severity <- function(r, loop){
                difficulty_walking == "cannot_do_at_all" |
                difficulty_remembering == "cannot_do_at_all" |
                difficulty_washing == "cannot_do_at_all" |
-               difficulty_communicating == "cannot_do_at_all") %>% select(disab_explos)
+               difficulty_communicating == "cannot_do_at_all") %>% dplyr::select(disab_explos)
     ifelse(nrow(select) > 0 && any(select == "yes"), 1, 0)
   })
   r <- r %>% mutate(s7_4 = ifelse(s7_4 == 1 & s7_5 == 1, 0, s7_4))
@@ -667,10 +676,10 @@ recoding_severity <- function(r, loop){
   r$fs_class <- rowMeans(r[,c("fcs_score", "fs_class_int")])
   
   r$s10_1 <- ifelse(r$fs_class < 1.5, 1, 0)
-  r$s10_2 <- NA
-  r$s10_3 <- ifelse(r$fs_class >= 1.5 & r$fs_class < 2.5, 1, 0)
-  r$s10_4 <- NA
-  r$s10_5 <- ifelse(r$fs_class >= 2.5, 1, 0)
+  r$s10_2 <- ifelse(r$fs_class >= 1.5 & r$fs_class < 2.5, 1, 0)
+  r$s10_3 <- ifelse(r$fs_class >= 2.5 & r$fs_class < 3.5, 1, 0)
+  r$s10_4 <- ifelse(r$fs_class >= 3.5, 1, 0)
+  r$s10_5 <- NA
   
   r$s11_1 <- ifelse(r$distance_health_service == "within_2km", 1, 0)
   r$s11_2 <- ifelse(r$distance_health_service == "between_2km_5km", 1, 0)
@@ -812,9 +821,329 @@ recoding_severity <- function(r, loop){
   r$s22_4 <- ifelse(rowSums(r[, c("latrines.flush", "latrines.vip_pit", "latrines.none")], na.rm = T) == 0 & r$shared_sanitation == "yes", 1, 0)
   r$s22_5 <- ifelse(r$latrines.none == 1, 1, 0)
   
-  r$s22_5 %>% table(useNA = "always")
+  r$s10_1 %>% table(useNA = "always")
   sum(length(which(r$s22_1==1)),length(which(r$s22_2==1)),length(which(r$s22_3==1)),length(which(r$s22_4==1)),length(which(r$s22_5==1)))
   sum(length(which(r$s22_1==1)),length(which(r$s22_2==1)))
   sum(length(which(r$s22_3==1)),length(which(r$s22_4==1)),length(which(r$s22_5==1)))
   return(r)
 }
+
+recoding_snfi <- function(r, loop){
+  
+  r$hh_pwsn <- apply(r, 1, FUN=function(x){
+    ifelse(any(loop$difficulty_seeing[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+             any(loop$difficulty_hearing[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+             any(loop$difficulty_walking[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+             any(loop$difficulty_remembering[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+             any(loop$difficulty_washing[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+             any(loop$difficulty_communicating[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")), 1, 0)
+  })
+  
+  r$cs <- ifelse(r$shelter_type %in% c("unfinished_abandoned_building", "damaged_building", "tent", 
+                                       "religious_building", "public_building", "non_residential", 
+                                       "container", "makeshift_shelter") | !is.na(r$camp), 1, 0)
+  
+  r$hh_pwsn_cs <- ifelse(r$hh_pwsn == 0, NA, ifelse(r$cs == 1, 1, 0))
+  
+  r$s4_1 <- ifelse(r$shelter_better.none == 1, 1, 0)
+  r$s4_4 <- ifelse(r$s4_1 != 1 & (r$shelter_better.improve_safety == 1 | r$shelter_better.improve_structure == 1), 1, 0)
+  r$s4_3 <- ifelse((r$s4_1 != 1 & r$s4_4 != 1) & 
+                     (r$shelter_better.improve_privacy == 1 | r$shelter_better.protect_climate == 1), 1, 0)
+  r$s4_2 <- ifelse((r$s4_1 != 1 & r$s4_4 != 1 & r$s4_3 != 1) & 
+                     (r$shelter_better.protec_hazards == 1 | 
+                        r$shelter_better.improve_tenure == 1 | r$shelter_better.improve_infrastructure == 1), 1, 0)
+  r$s4_5 <- NA
+  r[which(rowSums(r[,which(startsWith(names(r), "shelter_better."))]) == 0 | r$shelter_better.other == 1 | r$hh_pwsn == 0), 
+    which(startsWith(names(r), "s4"))] <- NA
+  
+  r$s4_3 %>% table(useNA = "always")
+  sum(length(which(r$s4_1==1)),length(which(r$s4_2==1)),length(which(r$s4_3==1)),length(which(r$s4_4==1)),length(which(r$s4_5==1)))
+  sum(length(which(r$s4_1==1)),length(which(r$s4_2==1)))
+  sum(length(which(r$s4_3==1)),length(which(r$s4_4==1)),length(which(r$s4_5==1)))
+  return(r)
+  
+  
+}
+
+recoding_education <- function(r, loop) {
+  r$g4 <- apply(r, 1, FUN=function(x){
+    ifelse(any(loop$attend_formal_ed[which(loop$X_submission__uuid == x["X_uuid"])] == "no"), 1, 0)
+  })
+  return(r)
+}
+
+recoding_cp <- function(r, loop) {
+  r$g51a <- ifelse(rowSums(r[,c("birth_cert_u18","id_card_u18")] == "no") > 0, 1, 0)
+  return(r)
+}
+
+########################################################
+#MSNI Analysis
+########################################################
+
+recoding_msni <- function(r, loop) {
+  loop_children <- loop[which(loop$age < 18),]
+  
+  # Sub-pillar Impact on People
+  r$a18 <- ifelse(r$population_group != "host", 3, 1)
+  r$g67 <- ifelse(rowSums(r[,c("why_not_return.house_damaged_destroyed", "why_not_return.house_land_occupied")], na.rm=T) > 0, 1, 0)
+  r$g73 <- ifelse(r$why_not_return.presence_of_mines %in% c(NA, 0), 0, 1)
+  r$c2 <- apply(r, 1, FUN=function(x){
+    ifelse(any(loop$disab_explos[which(loop$X_submission__uuid == x["X_uuid"])] == "yes"), 1, 0)
+  })
+  r$g6 <- apply(r, 1, FUN=function(x){
+    ifelse(any(loop$ever_attend[which(loop$X_submission__uuid == x["X_uuid"])] == "yes"), 1, 0)
+  })
+  
+  r$impact <- rowSums(r[,c("a18", "g67", "g73", "c2", "g6")])
+  r <- r %>% mutate(impact = case_when(
+    impact == 0 ~ 1,
+    impact > 0 & impact <= 3 ~ 2,
+    impact == 4 ~ 3,
+    impact > 4 ~ 4
+  ))
+  
+  # Sub-pillar Impact on Humanitarian Access
+ # r$d6 <- ifelse(r$aid_satisfaction == "no", 2, ifelse(r$aid_satisfaction %in% c("decline_to_answer", "do_not_know", "yes"), 0, NA))
+ # r$d10 <- ifelse(r$aid_workers_satisfied == "", NA, ifelse(r$aid_workers_satisfied == "no", 1, 0))
+ # r$d11 <- ifelse(r$community_decision_making == "no", 1, 0)
+ # r$d12 <- ifelse(r$complaint_mechanisms == "no", 1, ifelse(r$complaint_mechanisms %in% c("do_not_know", "yes", "decline_to_answer"), 0, NA))
+ # r$d14 <- ifelse(r$info_specific_needs == "yes", 1, 0)
+  
+ # r$impact_hum <- round2(rowSums(r[,c("d6","d10","d11","d12","d14")]) / 6 * 3 + 1)
+  
+ # r$impact_hum %>% table(useNA = "always")
+  
+  # Sub-pillar Capacity Gap
+  r$capacity_gap <- ifelse(r$child_dropout_school %in% c("no_already_did", "yes") |
+                             r$adult_risky  %in% c("no_already_did", "yes") |
+                             r$family_migrating %in% c("no_already_did", "yes") |
+                             r$child_forced_marriage %in% c("no_already_did", "yes"), 4, 
+                           ifelse(r$selling_transportation_means %in% c("no_already_did", "yes") |
+                                    r$change_place  %in% c("no_already_did", "yes") |
+                                    r$child_work %in% c("no_already_did", "yes"), 3, 
+                                  ifelse(r$selling_assets %in% c("no_already_did", "yes") |
+                                           r$borrow_debt  %in% c("no_already_did", "yes") |
+                                           r$reduce_spending %in% c("no_already_did", "yes") |
+                                           r$spending_savings %in% c("no_already_did", "yes"), 2, 1)))
+  
+  # Sub-pillar Well-being
+ # r$g56 <- ifelse(r$child_distress_number < 1 | is.na(r$child_distress_number), 0, 1)
+#r$g57 <- ifelse(r$adult_distress_number < 1 | is.na(r$adult_distress_number), 0, 1)
+ # r$c3 <- apply(r, 1, FUN=function(x){
+  #  ifelse(any(loop$difficulty_seeing[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+   #          any(loop$difficulty_hearing[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+    #         any(loop$difficulty_walking[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+     #        any(loop$difficulty_remembering[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+      #       any(loop$difficulty_washing[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+       #      any(loop$difficulty_communicating[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")), 1, 0)
+#  })
+  
+#  r$well_being <- rowSums(r[,c("g56","g57","c3")]) + 1
+  
+  
+  # Sub-pillar Vulnerability
+  loop_hoh <- loop[which(loop$relationship == "head"),]
+  loop_children <- loop[which(loop$age < 18),]
+  loop_females <- loop[which(loop$sex == "female"),]
+  loop_females <- loop_females %>% mutate(plw = ifelse(pregnant_lactating == "yes", 1, 0))
+  r_female_headed <- r[which(r$X_uuid %in% loop$X_submission__uuid[which(loop$sex == "female" & loop$relationship == "head")]),]
+  r$gender_hhh <- loop_hoh$sex[match(r$X_uuid, loop_hoh$X_submission__uuid)]
+  r$f_hhh <- ifelse(r$gender_hhh == "female", 1, 0)
+  r$a11 <- ifelse(loop_hoh[match(r$X_uuid,loop_hoh$X_submission__uuid), "marital_status"] %in%
+                    c("single", "separated", "widowed", "divorced"), 3, 
+                  ifelse(loop_hoh[match(r$X_uuid,loop_hoh$X_submission__uuid), "marital_status"] %in%
+                           c(NA, ""), NA, 0))  
+  r$g35 <- apply(r, 1, FUN=function(x){
+    ifelse(sum(loop$health_issue.chronic[which(loop$X_submission__uuid == x["X_uuid"])], na.rm = T) > 0, 1, 0)  
+  })
+  r$c3 <- apply(r, 1, FUN=function(x){
+   ifelse(any(loop$difficulty_seeing[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+           any(loop$difficulty_hearing[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+          any(loop$difficulty_walking[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+         any(loop$difficulty_remembering[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+        any(loop$difficulty_washing[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")) |
+      any(loop$difficulty_communicating[which(loop$X_submission__uuid == x["X_uuid"])] %in% c("a_lot_of_difficulty", "cannot_do_at_all")), 1, 0)
+  })
+  r$vulnerability <- rowSums(r[,c("a11", "g35", "c3")])
+  r$vulnerability <- round2(r$vulnerability)
+  r <- r %>% mutate(vulnerability = case_when(
+    vulnerability == 5 ~ 4, 
+    vulnerability == 3 ~ 3,
+    vulnerability == 1 ~ 1,
+    vulnerability == 2 ~ 2,
+    vulnerability == 4 ~ 4,
+    vulnerability == 0 ~ 1))
+  
+  
+  # Sub-pillar FoodSec
+  r$fcs <- r$cereals * 2 + r$nuts_seed * 3 + r$milk_dairy * 4 + r$meat * 4 + 
+    r$vegetables + r$fruits + r$oil_fats * 0.5 + r$sweets * 0.5
+  r$fcs_score <- ifelse(r$fcs <= 28, 4, ifelse(r$fcs <= 42, 3, 1))
+  
+  r$stress <- ifelse(r$selling_assets %in% c("no_already_did", "yes") |
+                       r$borrow_debt  %in% c("no_already_did", "yes") |
+                       r$reduce_spending %in% c("no_already_did", "yes") |
+                       r$spending_savings %in% c("no_already_did", "yes")   , 1, 0)
+  r$crisis <- ifelse(r$selling_transportation_means %in% c("no_already_did", "yes") |
+                       r$change_place  %in% c("no_already_did", "yes") |
+                       r$child_work %in% c("no_already_did", "yes"), 1, 0)
+  r$emergency <- ifelse(r$child_dropout_school %in% c("no_already_did", "yes") |
+                          r$adult_risky  %in% c("no_already_did", "yes") |
+                          r$family_migrating %in% c("no_already_did", "yes") |
+                          r$child_forced_marriage %in% c("no_already_did", "yes"), 1, 0)
+  r$cs_score <- ifelse(r$emergency == 1, 4, ifelse(r$crisis == 1, 3, ifelse(r$stress == 1, 2, 1)))
+  
+  r$fes <- r$food_exp / r$tot_expenditure
+  r$fes_score <- ifelse(r$fes <= 0.5, 1, ifelse(r$fes <= 0.65, 2, ifelse(r$fes <= 0.75, 3, 4)))
+  
+  r$fs_class_int <- rowMeans(r[,c("fes_score", "cs_score")])
+  r$fs_class <- rowMeans(r[,c("fcs_score", "fs_class_int")])
+  r$lsg_fs <- round2(r$fs_class)
+  
+  # Sub-pillar SNFI
+  r$basic_nfi <- rowSums(r[,c("nfi_priority_needs.bedding_items","nfi_priority_needs.mattresses_sleeping_mats",
+                              "nfi_priority_needs.blankets", "nfi_priority_needs.cooking_utensils_kitchen_set",
+                              "nfi_priority_needs.cooking_stove", "nfi_priority_needs.source_of_light",
+                              "nfi_priority_needs.fuel_storage", "nfi_priority_needs.cool_box",
+                              "nfi_priority_needs.water_storage", "nfi_priority_needs.fan",
+                              "nfi_priority_needs.winter_heaters", "nfi_priority_needs.clothing",
+                              "nfi_priority_needs.awc", 
+                              "nfi_priority_needs.cooking_fuel",
+                              "nfi_priority_needs.heating_fuel")])
+  r$g85 <- ifelse(r$basic_nfi >= 2, 1, 0)
+  r$a16 <- ifelse(r$shelter_type %in% c("unfinished_abandoned_building", "damaged_building", "tent", 
+                                        "religious_building", "public_building", "non_residential", 
+                                        "container", "makeshift_shelter") | !is.na(r$camp), 3, 0)
+  r <- r %>% mutate(g89 = case_when(
+    shelter_better.none == 1 ~ 0,
+    shelter_better.improve_safety == 1 | shelter_better.improve_structure == 1 ~ 4,
+    shelter_better.improve_privacy == 1 | shelter_better.protect_climate == 1 ~ 3,
+    shelter_better.protec_hazards == 1 | shelter_better.improve_tenure == 1 | 
+      shelter_better.improve_infrastructure == 1 ~ 2,
+    shelter_better.none == 0 ~ 0
+  ))
+  
+  r$lsg_snfi <- rowSums(r[,c("g85","g89", "a16")])
+  r <- r %>% mutate(lsg_snfi = case_when(
+    lsg_snfi <= 3 ~ 1,
+    lsg_snfi == 4 ~ 2,
+    lsg_snfi == 5 ~ 3,
+    lsg_snfi >= 6 ~ 4,
+    TRUE ~ lsg_snfi
+  ))
+  
+  # Sub-pillar Health
+  r$g25 <- ifelse(r$distance_health_service %in% c("between_2km_5km", "within_2km"), 0, 2)
+  r$g26 <- ifelse(r$distance_hospital %in% c("between_2km_5km", "between_6km_10km", "within_2km") &
+                    r$hospital_emergency_ser == "yes" &
+                    r$hospital_maternity_ser == "yes" &
+                    r$hospital_surgical_ser == "yes" &
+                    r$hospital_pediatric_ser == "yes", 0, 2)
+  r$g32 <- ifelse(r$women_specialised_services == "yes", 1, 0)
+  
+  
+  r$lsg_health <- rowSums(r[,c("g25","g26","g32")])
+  r <- r %>% mutate(lsg_health = case_when(
+    lsg_health == 0 ~ 1,
+    lsg_health == 1 ~ 1,
+    lsg_health == 2 ~ 2,
+    lsg_health == 3 ~ 3, 
+    lsg_health == 4 ~ 4))
+  
+  # Sub-pillar Protection
+  r <- r %>% mutate(g68 = case_when(
+    hh_dispute == "yes" ~ 1,
+    hh_dispute != "yes" ~ 0
+  ))
+  r$g51 <- ifelse(rowSums(r[,c("pds","info_card","id_card_a18","id_card_u18","birth_cert_a18",
+                               "birth_cert_u18","citizenship_a18","citizenship_u18")] == "no") > 0, 1, 0)
+  r <- r %>% mutate(g54 = case_when(
+    restriction_clearance == "yes" | restriction_documents == "yes" | restriction_time == "yes" | 
+      restriction_reason == "yes" | restriction_physical == "yes" | restriction_other == "yes" ~ 1,
+    !(restriction_clearance == "yes" | restriction_documents == "yes" | restriction_time == "yes" | 
+        restriction_reason == "yes" | restriction_physical == "yes" | restriction_other == "yes") ~ 0,
+    TRUE ~ 1 # In camp there was another question before if they could leave the camp at all, if no the restriction question was not asked.
+  ))
+  r$g63 <- ifelse(rowSums(r[,c("unsafe_areas.facilities", "unsafe_areas.water_points",
+                               "unsafe_areas.social_areas", "unsafe_areas.distribution_areas",
+                               "unsafe_areas.markets", "unsafe_areas.way_to_centers",
+                               "unsafe_areas.way_to_school")], na.rm=T) > 0, 1, 0)
+  r$a13 <- apply(r, 1, FUN=function(x){
+    ifelse(any(loop$age[which(loop$X_submission__uuid == x["X_uuid"])] < 18 & 
+                 loop$work[which(loop$X_submission__uuid == x["X_uuid"])] == "yes"), 1, 0)
+  })
+  r$a12 <- apply(r, 1, FUN=function(x){
+    ifelse(any(loop_children$marital_status[which(loop_children$X_submission__uuid == x["X_uuid"])] == "married"), 1, 0)
+  })
+  r$g7a <- ifelse(r$no_school_no_docs == "yes", 1, 0)
+  r$g64 <- ifelse(r$hh_risk_eviction == "yes", 1, 0)
+  r$g64 <- ifelse(is.na(r$hh_risk_eviction), 0, r$g64)
+  r$g65 <- ifelse(r$hh_member_distress == "yes", 1, 0)
+  
+  r$lsg_protection <- rowSums(r[,c("g68","g51","g54","g63","a13","a12","g7a","g64","g65")])
+  r <- r %>% mutate(lsg_protection = case_when(
+    lsg_protection <= 1 ~ 1,
+    lsg_protection == 2 ~ 2,
+    lsg_protection == 3 ~ 3,
+    lsg_protection >= 4 ~ 4,
+    TRUE ~ lsg_protection
+  ))
+  
+  # Sub-pillar EL
+  r$g44 <- apply(r, 1, FUN=function(x){
+    ifelse(any(loop$age[which(loop$X_submission__uuid == x["X_uuid"])] > 17 & 
+                 loop$work[which(loop$X_submission__uuid == x["X_uuid"])] == "no" & 
+                 loop$actively_seek_work[which(loop$X_submission__uuid == x["X_uuid"])] == "yes"), 1, 0)
+  })
+  r$b1 <- ifelse(rowSums(r[, c("inc_employment", "inc_pension")], na.rm=T) < 480000, 1, 0)
+  r$b2 <- ifelse(r$primary_livelihood.ngo_charity_assistance == 1 & 
+                   rowSums(r[,which(startsWith(names(r), "primary_livelihood."))]) == 1, 1, 0)
+  r$g37 <- ifelse(r$how_much_debt > 505000, 1, 0)
+  r$g38 <- ifelse(r$reasons_for_debt %in% c("basic_hh_expenditure", "education", "food", "health"), 1, 0)
+  
+  r$lsg_el <- round2(rowSums(r[,c("g44", "b1", "b2", "g37", "g38")]) / 5 * 3)+ 1 # TO BE DISCUSSED
+
+  #LSG Education
+  r$perc_edu <- apply(r, 1, FUN=function(x){
+    (loop %>% filter(X_submission__uuid == x["X_uuid"] & (attend_formal_ed == "yes" | attend_informal_ed == "yes")) %>% nrow) / 
+      (loop %>% filter(X_submission__uuid == x["X_uuid"] & attend_formal_ed != "") %>% nrow)
+  })
+  r$lsg_ed <- ifelse(r$perc_edu == 1, 1, 0)
+  r$lsg_ed <- ifelse(r$perc_edu >= 0.75 & r$perc_edu < 1, 2, r$lsg_ed)
+  r$lsg_ed <- ifelse(r$perc_edu >= 0.5 & r$perc_edu < 0.75, 3, r$lsg_ed)
+  r$lsg_ed <- ifelse(r$perc_edu < 0.5, 4, r$lsg_ed)
+
+  r$lsg_ed <- round2(r$lsg_ed)
+  
+  
+  # Sub-pillar WASH
+  r$g94 <- ifelse(r$access_private_shared_watertank == "no", 2.5, ifelse(r$tank_capacity * r$refill_times / r$people_share_tank / 7 < 50, 2.5, 0))
+  r$g95 <- ifelse(r$drinking_water_source.network_private == 1 | r$drinking_water_source.network_comm == 1 | 
+                    r$drinking_water_source.borehole == 1 | r$drinking_water_source.prot_well == 1 | 
+                    r$drinking_water_source.prot_tank == 1 | r$drinking_water_source.prot_spring == 1 |
+                    r$drinking_water_source.bottled_water == 1, 0, 1.5)
+  r$g96 <- ifelse(r$treat_drink_water_how == "not_necessary", 0, ifelse(r$treat_drink_water_how == "", NA, 2.5))
+  r$g97 <- ifelse(rowSums(r[, c("latrines.flush", "latrines.vip_pit")], na.rm = T) == 0, 2, 0)
+  r$g99 <- ifelse(r$access_hygiene_items == "no" | r$use_of_soap.handwashing == 0, 1.5, 0)
+
+  r$lsg_wash <- round2(rowSums(r[,c("g94","g95","g96","g97","g99")]) / 10 * 3) + 1
+  
+  
+#  # MSNI decision tree
+#  r$msni <- apply(r, 1, function(x) {
+#    step_1 <- as.numeric(max(unique(x[c("lsg_health", "lsg_protection", "lsg_snfi")])))
+#    step_2 <- as.numeric(min(step_1, x["impact"]))
+#    co_ex <- x[c("lsg_health", "lsg_protection", "lsg_snfi")] %>% as.numeric %>% table
+#    co_ex2 <- which(co_ex == 2)
+#    step_3 <- ifelse(length(co_ex2) == 0, 0, as.numeric(names(co_ex)[co_ex2])) %>% max(step_2)
+#    step_4 <- as.numeric(max(step_3, max(x[c("lsg_fs", "lsg_el", "lsg_wash", "capacity_gap")])))
+#    step_5 <- step_4 + ifelse(step_4 == 1 & max(x[c("lsg_health", "lsg_protection", "lsg_snfi")]) >= 3, 1, 0)
+#    return(step_5)
+#  })  
+  
+  r$lsg_snfi %>% table(useNA = "always")
+  return(r)
+}
+
+

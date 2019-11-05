@@ -9,6 +9,7 @@ library(xlsformfill) # generate fake data for kobo
 library(surveyweights) # calculate weights from samplingframes
 library(hypegrammaR) # simple stats 4 complex samples
 library(composr) # horziontal operations
+source("postprocessing_functions.R")
 source("functions/to_alphanumeric_lowercase.R")
 source("functions/analysisplan_factory.R")
 source("functions/recoding.R")
@@ -40,7 +41,6 @@ source("match_inputs.R", local = T)
 #'     3.4.combine the stratum sampling frames
 #'     3.5.add strata ids to the dataset
 #'     3.6. throw error if any don't match
-
 
 
 # any further problems with the sampling frame matching?
@@ -108,29 +108,39 @@ response$weights<-weight_fun(response)
 # }
 
 
-response_with_composites <- recoding_severity(response, loop)
-table(response_with_composites[, c("s8_1")][which(response_with_composites$district == "erbil" & response_with_composites$population_group == "idp_out_camp")], useNA="always")
-which(response_with_composites$district == "al.hatra")
+response_with_composites <- recoding_msni(response, loop)
+#table(response_with_composites[, c("g51a")][which(response_with_composites$district == "erbil" & response_with_composites$population_group == "idp_out_camp")], useNA="always")
+#which(response_with_composites$district == "al.hatra")
 
 # Correcting for random sampled districts
 simple_random_records <- response_with_composites$strata %in% simple_random_strata
 response_with_composites$cluster_id[simple_random_records]<-
   paste("simple random unique cluster id - ",1:length(which(simple_random_records)))
 
-name <- "severity"
-analysisplan <- read.csv(sprintf("input/dap_%s.csv",name), stringsAsFactors = F)
-analysisplan <- analysisplan[-which(analysisplan$ignore),]
-analysisplan <- analysisplan[which(startsWith(analysisplan$dependent.variable, "s18")),]
+dap_name <- "msni"
+analysisplan <- read.csv(sprintf("input/dap_%s.csv",dap_name), stringsAsFactors = F)
+#analysisplan <- analysisplan[-which(analysisplan$ignore),]
+#analysisplan <- analysisplan[which(startsWith(analysisplan$dependent.variable, "g51a") 
+                                  #  | startsWith(analysisplan$dependent.variable, "s7") 
+                                  #  | startsWith(analysisplan$dependent.variable, "s21") 
+                                  #  | startsWith(analysisplan$dependent.variable, "s22")
+#                                   ),]
+#analysisplan <- analysisplan_nationwide(analysisplan)
+#analysisplan <- analysisplan_pop_group_aggregated(analysisplan)
 result <- from_analysisplan_map_to_output(response_with_composites, analysisplan = analysisplan,
                                           weighting = weight_fun,
                                           cluster_variable_name = "cluster_id",
                                           questionnaire = questionnaire, confidence_level = 0.9)
 
-name <- "severity_20190911_docs_doubled"
+name <- "msni_20190926_with_sub_pillars"
 saveRDS(result,paste(sprintf("output/result_%s.RDS", name)))
 #summary[which(summary$dependent.var == "g51a"),]
 
-source("postprocessing_functions.R")
+lookup_in_camp<-load_samplingframe("./input/sampling_frame_in_camp.csv")
+names(lookup_in_camp)[which(names(lookup_in_camp) == "camp")] <- "name"
+names(lookup_in_camp)[which(names(lookup_in_camp) == "camp.long.name")] <- "english"
+names(lookup_in_camp)[which(names(lookup_in_camp) == "governorate")] <- "filter"
+
 summary <- bind_rows(lapply(result[[1]], function(x){x$summary.statistic}))
 write.csv(summary, sprintf("output/raw_results_%s.csv", name), row.names=F)
 summary <- read.csv(sprintf("output/raw_results_%s.csv", name), stringsAsFactors = F)
@@ -141,7 +151,7 @@ if(all(is.na(summary$independent.var.value))){summary$independent.var.value <- "
 groups <- unique(summary$independent.var.value)
 groups <- groups[!is.na(groups)]
 for (i in 1:length(groups)) {
-  df <- pretty.output(summary, groups[i], analysisplan, cluster_lookup_table, lookup_table, severity = name == "severity")
+  df <- pretty.output(summary, groups[i], analysisplan, cluster_lookup_table, lookup_table, severity = name == "severity", camp = F)
   write.csv(df, sprintf("output/summary_sorted_%s_%s.csv", name, groups[i]), row.names = F)
   if(i == 1){
     write.xlsx(df, file=sprintf("output/summary_sorted_%s.xlsx", name), sheetName=groups[i], row.names=FALSE)
@@ -150,16 +160,22 @@ for (i in 1:length(groups)) {
   }
 }
 
+# formap <- df[-c(1:4),]
+# formap$msni <- as.numeric(formap$msni)
+
+
 # Extra step for pin calculation
 for (i in 1:length(groups)) {
   group_pin <- severity_for_pin(sprintf("output/summary_sorted_%s_%s.csv", name, groups[i]), analysisplan = analysisplan)
   write.csv(group_pin, sprintf("output/pin_%s_%s.csv", name, groups[i]), row.names = F)
   if(i == 1){
-  write.xlsx(group_pin, file=sprintf("output/pin_%s.xlsx", name), sheetName=groups[i], row.names=FALSE)
+    write.xlsx(group_pin, file=sprintf("output/pin_%s.xlsx", name), sheetName=groups[i], row.names=FALSE)
   } else {
-  write.xlsx(group_pin, file=sprintf("output/pin_%s.xlsx", name), sheetName=groups[i], append=TRUE, row.names=FALSE)
+    write.xlsx(group_pin, file=sprintf("output/pin_%s.xlsx", name), sheetName=groups[i], append=TRUE, row.names=FALSE)
   }
 }
+
+
 
 response_with_composites %>% filter(district=="al.baaj") %>% 
   select(names(response_with_composites)[which(startsWith(names(response_with_composites), "s8_"))])
